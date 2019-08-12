@@ -49,19 +49,11 @@ parameter_vector GaussianFit::residual_derivative(const std::pair<double, double
     return der;
 }
 
-void GaussianFit::fit(bool verbose=false)
+void GaussianFit::fit()
 {
-    if (verbose) {
-        solve_least_squares_lm(dlib::objective_delta_stop_strategy(1e-7).be_verbose(), 
-                            residual,
-                            residual_derivative,
-                            data_samples,
-                            params);
-    } else {
-        solve_least_squares_lm(dlib::objective_delta_stop_strategy(1e-7), 
-                            residual,
-                            residual_derivative,
-                            data_samples,
-                            params);
-    }
+    solve_least_squares_lm(dlib::objective_delta_stop_strategy(1e-7), 
+                        residual,
+                        residual_derivative,
+                        data_samples,
+                        params);
 }
