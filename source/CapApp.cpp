@@ -1,7 +1,7 @@
 #include <VideoCap.hpp>
 
 CaptureApplication::CaptureApplication()
-: writeContinuous(false), writeSingles(false), captureOn(true), writeCount(0)
+: writeContinuous(false), writeSingles(false), captureOn(true), writeCount(0), focusOn(false)
 {
     // Print out current fps.
     std::cout << "FPS: " << vc.get_fps() << std::endl;
@@ -17,7 +17,7 @@ CaptureApplication::CaptureApplication()
     // application buffer.
     readThread = std::thread(&CaptureApplication::read_frames, this);
     writeThread = std::thread(&CaptureApplication::write_frames, this);
-
+    fwhmThread = std::thread(&CaptureApplication::calculate_fwhm, this);
 
     while (captureOn) {
         parse_command();
@@ -27,7 +27,7 @@ CaptureApplication::CaptureApplication()
     std::cout << "..." << std::endl;
     writeThread.join();
     std::cout << "..." << std::endl;
-    // fwhmThread.join();
+    fwhmThread.join();
     std::cout << "..." << std::endl;
     CapAppBuffer->clear_buffer();
 }
@@ -74,6 +74,7 @@ void CaptureApplication::parse_command()
     if (command == "q") {
         // Quit command.
         std::cout << "Quitting..." << std::endl;
+        focusOn = false;
         captureOn = false;
         std::cout << "..." << std::endl;
     } else if (command == "start" && !writing) {
@@ -102,10 +103,10 @@ void CaptureApplication::parse_command()
         vc.set_exposure(exposure);
     } else if (command == "fwhm" && !focusOn) {
         focusOn = true;
-        fwhmThread = std::thread(&CaptureApplication::calculate_fwhm, this);
+        // fwhmThread = std::thread(&CaptureApplication::calculate_fwhm, this);
     } else if (command == "fwhm" && focusOn) {
         focusOn = false;
-        fwhmThread.join();
+        // fwhmThread.join();
     } else if (command == "fps") {
         captureOn = false;
         readThread.join();
@@ -170,7 +171,7 @@ void CaptureApplication::calculate_fwhm()
     cv::Mat invimg = cv::Mat::zeros(frame.image.size(), frame.image.type());
     std::vector<double> fwhms;
     double fwhm_sum;
-    int fwhm_samples = 200;
+    int fwhm_samples = 1000;
 
     while (captureOn)
     {
@@ -189,7 +190,7 @@ void CaptureApplication::calculate_fwhm()
                     cv::HoughCircles(latest_image, circles, CV_HOUGH_GRADIENT, 1, latest_image.rows/64, 200, 10, 0, 0);
                                         
                     if (circles.size() != 1) {
-                        std::cout << "No single circle detected!" << std::endl;
+                        // std::cout << "No single circle detected!" << std::endl;
                         continue; //Only calculate if there is one circle.
                     }
 

@@ -203,7 +203,7 @@ private:
     std::atomic_uint additionalFrames; // User specified number of frames.
     std::atomic_uint exposure; // User defined exposure.
     //cv::Mat frame; // OpenCV Mat object which camera buffer is read to.
-    std::atomic_bool focusOn {false}; // Focus calculation switch.
+    std::atomic_bool focusOn; // Focus calculation switch.
     Frame frame;
     const unsigned int cap_app_size = 500; // Frame capacity of circular buffer.
 
