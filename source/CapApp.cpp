@@ -75,6 +75,7 @@ void CaptureApplication::parse_command()
     if (command == "q") {
         // Quit command.
         std::cout << "Quitting..." << std::endl;
+        laplOn = false;
         focusOn = false;
         captureOn = false;
         std::cout << "..." << std::endl;
@@ -104,10 +105,12 @@ void CaptureApplication::parse_command()
         vc.set_exposure(exposure);
     } else if (command == "fwhm" && !focusOn) {
         focusOn = true;
-        // fwhmThread = std::thread(&CaptureApplication::calculate_fwhm, this);
     } else if (command == "fwhm" && focusOn) {
         focusOn = false;
-        // fwhmThread.join();
+    } else if (command == "lapvar" && !laplOn) {
+        laplOn = true;
+    } else if (command =="lapvar" && laplOn) {
+        laplOn = false;
     } else if (command == "fps") {
         captureOn = false;
         readThread.join();
@@ -131,7 +134,10 @@ void CaptureApplication::read_frames()
     int ret;
     while (captureOn)
     {
+        framelock.lock();
         ret = vc.read(frame);
+        framelock.unlock();
+
         if (ret) {
             CapAppBuffer->push_front(frame); // writes to front of buffer
             cv::imshow("Frame", frame.image);
@@ -175,7 +181,33 @@ void CaptureApplication::image_processing()
             calculate_fwhm();
         }
         while (laplOn) {
-            int i = 0;
+            calculate_lapvar();
+        }
+    }
+}
+
+void CaptureApplication::calculate_lapvar()
+{
+    framelock.lock();
+    cv::Mat latest_image = frame.image.clone();
+    framelock.unlock();
+
+    cv::Mat lapl_image, mean, stddev;
+    static std::vector<double> vars;
+    int var_samples = 120;
+    double sigma, var_sum;
+
+    if (latest_image.data) {
+        // cv::GaussianBlur( latest_image, latest_image, cv::Size(3,3), 0, 0, cv::BORDER_DEFAULT );
+        cv::Laplacian(latest_image, lapl_image, CV_64F, 3, 1, 0, cv::BORDER_DEFAULT);
+        cv::meanStdDev(lapl_image, mean, stddev);
+        sigma = static_cast<double>(stddev.at<double>(0, 0));
+        vars.push_back(sigma*sigma);
+
+        if (vars.size() == var_samples) {
+            var_sum = std::accumulate(vars.begin(), vars.end(), 0.0);
+            std::cout << "Laplacian variance: " << var_sum/var_samples << std::endl;
+            vars.clear();
         }
     }
 }
@@ -198,10 +230,8 @@ void CaptureApplication::calculate_fwhm()
         // Apply Hough Transform
         // Returns circles, an array with column, row, radius indexing.
         cv::HoughCircles(latest_image, circles, CV_HOUGH_GRADIENT, 1, latest_image.rows/64, 200, 10, 0, 0);
-        // std::cout << circles.size() << std::endl;
+
         if (circles.size() == 1) {
-            // std::cout << "derp" << std::endl;
-            // std::cout << "No single circle detected!" << std::endl;
             //Only calculate if there is one circle.
             int rad = static_cast<int>(circles[0][2]);
             int x = static_cast<int>(circles[0][0]); // col index
@@ -221,8 +251,6 @@ void CaptureApplication::calculate_fwhm()
             gfit.fit();
 
             fwhms.push_back(2.355*gfit.get_sigma());
-            // std::cout << 2.355*gfit.get_sigma() << std::endl;
-            // std::cout << fwhms.size() << std::endl;
 
             if (fwhms.size() == fwhm_samples) {
                 fwhm_sum = std::accumulate(fwhms.begin(), fwhms.end(), 0.0);

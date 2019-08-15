@@ -205,6 +205,7 @@ private:
     //cv::Mat frame; // OpenCV Mat object which camera buffer is read to.
     std::atomic_bool focusOn; // Focus calculation switch.
     std::atomic_bool laplOn; // Laplacian variance calculation switch.
+    std::mutex framelock;
     Frame frame;
     const unsigned int cap_app_size = 500; // Frame capacity of circular buffer.
 
