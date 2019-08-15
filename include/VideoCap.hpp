@@ -193,7 +193,7 @@ private:
     VideoCapture vc;
     std::thread readThread; // Thread for reading frames from VideoCapture.
     std::thread writeThread; // Thread for writing frames from VideoCapture.
-    std::thread fwhmThread; // Thread for calculating FWHM of circle.
+    std::thread improThread; // Thread for image processing.
     bounded_buffer *CapAppBuffer; // Circular buffer for frame R/W.
     std::atomic_bool writeContinuous; // Switch for writing frames to disk.
     std::atomic_bool writeSingles; // Switch for writing given amount of frames.
@@ -204,6 +204,7 @@ private:
     std::atomic_uint exposure; // User defined exposure.
     //cv::Mat frame; // OpenCV Mat object which camera buffer is read to.
     std::atomic_bool focusOn; // Focus calculation switch.
+    std::atomic_bool laplOn; // Laplacian variance calculation switch.
     Frame frame;
     const unsigned int cap_app_size = 500; // Frame capacity of circular buffer.
 
@@ -219,7 +220,9 @@ private:
     unsigned int str2int(const std::string *command); // Converts str to int.
     void read_frames(); // Reads frames to CapAppBuffer, and displays them.
     void write_frames(); // Writes frames from CapAppBuffer.
+    void image_processing();
     void calculate_fwhm(); // Calculates fwhm of detected circle.
+    void calculate_lapvar(); // Calculates laplacian variance.
 public:
     CaptureApplication();
     ~CaptureApplication();

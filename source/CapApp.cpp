@@ -1,7 +1,8 @@
 #include <VideoCap.hpp>
 
 CaptureApplication::CaptureApplication()
-: writeContinuous(false), writeSingles(false), captureOn(true), writeCount(0), focusOn(false)
+: writeContinuous(false), writeSingles(false), captureOn(true), writeCount(0), 
+  focusOn(false), laplOn(false)
 {
     // Print out current fps.
     std::cout << "FPS: " << vc.get_fps() << std::endl;
@@ -17,7 +18,7 @@ CaptureApplication::CaptureApplication()
     // application buffer.
     readThread = std::thread(&CaptureApplication::read_frames, this);
     writeThread = std::thread(&CaptureApplication::write_frames, this);
-    fwhmThread = std::thread(&CaptureApplication::calculate_fwhm, this);
+    improThread = std::thread(&CaptureApplication::image_processing, this);
 
     while (captureOn) {
         parse_command();
@@ -27,7 +28,7 @@ CaptureApplication::CaptureApplication()
     std::cout << "..." << std::endl;
     writeThread.join();
     std::cout << "..." << std::endl;
-    fwhmThread.join();
+    improThread.join();
     std::cout << "..." << std::endl;
     CapAppBuffer->clear_buffer();
 }
@@ -111,12 +112,14 @@ void CaptureApplication::parse_command()
         captureOn = false;
         readThread.join();
         writeThread.join();
+        improThread.join();
         CapAppBuffer->clear_buffer();
         vc.release();
         vc.capture(true);
         captureOn = true;
         readThread = std::thread(&CaptureApplication::read_frames, this);
         writeThread = std::thread(&CaptureApplication::write_frames, this);
+        improThread = std::thread(&CaptureApplication::image_processing, this);
         get_write_status();
     } else {
         std::cout << "Command not valid!" << std::endl;
@@ -164,61 +167,67 @@ void CaptureApplication::write_frames()
     CapAppBuffer->clear_producer();
 }
 
-void CaptureApplication::calculate_fwhm()
+void CaptureApplication::image_processing()
 {
-    cv::Mat latest_image;
-    cv::Mat subimg = cv::Mat::ones(frame.image.size(), frame.image.type())*255;
-    cv::Mat invimg = cv::Mat::zeros(frame.image.size(), frame.image.type());
-    std::vector<double> fwhms;
-    double fwhm_sum;
-    int fwhm_samples = 1000;
-
     while (captureOn)
     {
         while (focusOn) {
+            calculate_fwhm();
+        }
+        while (laplOn) {
+            int i = 0;
+        }
+    }
+}
 
-            cv::Mat latest_image = frame.image;
+void CaptureApplication::calculate_fwhm()
+{
+    cv::Mat latest_image = frame.image;
+    cv::Mat subimg = cv::Mat::ones(frame.image.size(), frame.image.type())*255;
+    cv::Mat invimg = cv::Mat::zeros(frame.image.size(), frame.image.type());
+    static std::vector<double> fwhms;
+    double fwhm_sum;
+    int fwhm_samples = 1000;
 
-            if (!latest_image.empty()) {
-                    cv::subtract(subimg, latest_image, invimg);
+    if (!latest_image.empty()) {
+        cv::subtract(subimg, latest_image, invimg);
 
-                    // https://www.learnopencv.com/hough-transform-with-opencv-c-python/
-                    std::vector<cv::Vec3f>  circles;
+        // https://www.learnopencv.com/hough-transform-with-opencv-c-python/
+        std::vector<cv::Vec3f>  circles;
 
-                    // Apply Hough Transform
-                    // Returns circles, an array with column, row, radius indexing.
-                    cv::HoughCircles(latest_image, circles, CV_HOUGH_GRADIENT, 1, latest_image.rows/64, 200, 10, 0, 0);
-                                        
-                    if (circles.size() != 1) {
-                        // std::cout << "No single circle detected!" << std::endl;
-                        continue; //Only calculate if there is one circle.
-                    }
+        // Apply Hough Transform
+        // Returns circles, an array with column, row, radius indexing.
+        cv::HoughCircles(latest_image, circles, CV_HOUGH_GRADIENT, 1, latest_image.rows/64, 200, 10, 0, 0);
+        // std::cout << circles.size() << std::endl;
+        if (circles.size() == 1) {
+            // std::cout << "derp" << std::endl;
+            // std::cout << "No single circle detected!" << std::endl;
+            //Only calculate if there is one circle.
+            int rad = static_cast<int>(circles[0][2]);
+            int x = static_cast<int>(circles[0][0]); // col index
+            int y = static_cast<int>(circles[0][1]); // row index
+            int extendedrad = 30;
+            int startx = x - (rad + extendedrad);
+            int endx = x + (rad + extendedrad);
+            std::vector<std::pair<double, double>> data_samples;
+            double intensity;
 
-                    int rad = static_cast<int>(circles[0][2]);
-                    int x = static_cast<int>(circles[0][0]); // col index
-                    int y = static_cast<int>(circles[0][1]); // row index
-                    int extendedrad = 30;
-                    int startx = x - (rad + extendedrad);
-                    int endx = x + (rad + extendedrad);
-                    std::vector<std::pair<double, double>> data_samples;
-                    double intensity;
+            for (int index=startx; index<=endx; ++index) {
+                intensity = static_cast<double>(invimg.at<uchar>(y, index));
+                data_samples.push_back(std::make_pair(index, intensity));
+            }
 
-                    for (int index=startx; index<=endx; ++index) {
-                        intensity = static_cast<double>(invimg.at<uchar>(y, index));
-                        data_samples.push_back(std::make_pair(index, intensity));
-                    }
+            GaussianFit gfit = GaussianFit(data_samples, x, rad, 100, 140);
+            gfit.fit();
 
-                    GaussianFit gfit = GaussianFit(data_samples, x, rad, 100, 140);
-                    gfit.fit();
+            fwhms.push_back(2.355*gfit.get_sigma());
+            // std::cout << 2.355*gfit.get_sigma() << std::endl;
+            // std::cout << fwhms.size() << std::endl;
 
-                    fwhms.push_back(2.355*gfit.get_sigma());
-                    // std::cout << 2.355*gfit.get_sigma() << std::endl;
-
-                    if (fwhms.size() == fwhm_samples) {
-                        fwhm_sum = std::accumulate(fwhms.begin(), fwhms.end(), 0.0);
-                        std::cout << "FWHM: " << fwhm_sum/fwhm_samples << std::endl;
-                        fwhms.clear();
-                    }
+            if (fwhms.size() == fwhm_samples) {
+                fwhm_sum = std::accumulate(fwhms.begin(), fwhms.end(), 0.0);
+                std::cout << "FWHM: " << fwhm_sum/fwhm_samples << std::endl;
+                fwhms.clear();
             }
         }
     }
