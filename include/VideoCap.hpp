@@ -52,6 +52,7 @@ extern "C" {
 #include <opencv2/core/fast_math.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/xfeatures2d.hpp>
 
 #include <boost/circular_buffer.hpp>
 #include <boost/thread/mutex.hpp>
@@ -205,9 +206,13 @@ private:
     //cv::Mat frame; // OpenCV Mat object which camera buffer is read to.
     std::atomic_bool focusOn; // Focus calculation switch.
     std::atomic_bool laplOn; // Laplacian variance calculation switch.
+    std::atomic_bool featuresOn; // SIFT feature number feedback.
     std::mutex framelock;
     Frame frame;
     const unsigned int cap_app_size = 500; // Frame capacity of circular buffer.
+    cv::Ptr<cv::Feature2D> features = cv::xfeatures2d::SIFT::create();
+    std::vector<cv::KeyPoint> keypoints;
+    cv::Mat descriptors;
 
     void run_capture(); // Loops through Videocapture.read() calls.
     void parse_command();
@@ -224,6 +229,7 @@ private:
     void image_processing();
     void calculate_fwhm(); // Calculates fwhm of detected circle.
     void calculate_lapvar(); // Calculates laplacian variance.
+    void detect_features();
 public:
     CaptureApplication();
     ~CaptureApplication();

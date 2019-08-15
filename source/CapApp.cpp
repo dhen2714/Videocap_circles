@@ -2,7 +2,7 @@
 
 CaptureApplication::CaptureApplication()
 : writeContinuous(false), writeSingles(false), captureOn(true), writeCount(0), 
-  focusOn(false), laplOn(false)
+  focusOn(false), laplOn(false), featuresOn(false)
 {
     // Print out current fps.
     std::cout << "FPS: " << vc.get_fps() << std::endl;
@@ -76,6 +76,7 @@ void CaptureApplication::parse_command()
         // Quit command.
         std::cout << "Quitting..." << std::endl;
         laplOn = false;
+        featuresOn = false;
         focusOn = false;
         captureOn = false;
         std::cout << "..." << std::endl;
@@ -109,9 +110,16 @@ void CaptureApplication::parse_command()
         focusOn = false;
     } else if (command == "lapvar" && !laplOn) {
         laplOn = true;
-    } else if (command =="lapvar" && laplOn) {
+    } else if (command == "lapvar" && laplOn) {
         laplOn = false;
+    } else if (command == "features" && !featuresOn) {
+        featuresOn = true;
+    } else if (command == "features" && featuresOn) {
+        featuresOn = false;
     } else if (command == "fps") {
+        laplOn = false;
+        featuresOn = false;
+        focusOn = false;
         captureOn = false;
         readThread.join();
         writeThread.join();
@@ -183,7 +191,25 @@ void CaptureApplication::image_processing()
         while (laplOn) {
             calculate_lapvar();
         }
+        while (featuresOn) {
+            detect_features();
+        }
     }
+}
+
+void CaptureApplication::detect_features()
+{
+    framelock.lock();
+    cv::Mat latest_image = frame.image.clone();
+    framelock.unlock();
+
+    if (!latest_image.empty()) {
+        features->detect(latest_image, keypoints);
+        features->compute(latest_image, keypoints, descriptors);
+    
+        std::cout << "Number of keypoints:" << keypoints.size() << std::endl;
+    }
+
 }
 
 void CaptureApplication::calculate_lapvar()
